@@ -3,8 +3,7 @@ import torch
 import torch.nn.functional as F
 
 from loss import calc_segmentation_consistency
-
-
+from utils import rescale_intensity
 
 class ComposeAdversarialTransformSolver(object):
     """
@@ -15,11 +14,11 @@ class ComposeAdversarialTransformSolver(object):
                 chain_of_transforms=[],divergence_types=['kl','contour'],
                 divergence_weights=[1.0,0.5],use_gpu: bool = True,
                 debug: bool = False,
-                disable_adv_noise = False
+                disable_adv_noise = False,
+                if_norm_image=False
                 ):
         '''
-        apply a chain of transforms
-
+        adversarial data augmentation solver
         '''
         self.chain_of_transforms=chain_of_transforms
         self.use_gpu = use_gpu
@@ -28,6 +27,7 @@ class ComposeAdversarialTransformSolver(object):
         self.divergence_types=divergence_types
         self.require_bi_loss = self.if_contains_geo_transform()
         self.disable_adv_noise=disable_adv_noise
+        self.if_norm_image = if_norm_image
 
     
         
@@ -175,7 +175,7 @@ class ComposeAdversarialTransformSolver(object):
         return dist,adv_data,adv_output,warped_back_adv_output
     
     
-    def forward(self, data,chain_of_transforms=None):
+    def forward(self, data,chain_of_transforms=None,norm_image_fn=None):
         '''
         forward the data to get transformed data
         :param data: input images x, NCHW
@@ -188,6 +188,13 @@ class ComposeAdversarialTransformSolver(object):
         for transform in chain_of_transforms:
             data = transform.forward(data)
             self.diffs.append(transform.diff)
+        if self.if_norm_image:
+            if norm_image_fn is None:
+                # by default, rescale images to 0,1 
+                norm_image_fn = rescale_intensity
+            ## norm image
+            data = norm_image_fn(data)
+
         return data
     
     def predict_forward(self, data,chain_of_transforms=None):
