@@ -192,8 +192,8 @@ class ComposeAdversarialTransformSolver(object):
             data = transform.forward(data)
             self.diffs.append(transform.diff)
         if self.if_norm_image:
-                # by default, rescale images to 0,1 
-                norm_image_fn = rescale_intensity
+            # by default, rescale images to 0,1 
+            norm_image_fn = rescale_intensity
             ## norm image
             data = norm_image_fn(data)
 
