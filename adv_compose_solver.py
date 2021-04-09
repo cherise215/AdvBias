@@ -28,6 +28,9 @@ class ComposeAdversarialTransformSolver(object):
         self.require_bi_loss = self.if_contains_geo_transform()
         self.disable_adv_noise=disable_adv_noise
         self.if_norm_image = if_norm_image
+        ## change to your own image normalization functions,by default, rescale images to 0,1 
+
+        self.norm_image_fn=rescale_intensity
 
     
         
@@ -175,7 +178,7 @@ class ComposeAdversarialTransformSolver(object):
         return dist,adv_data,adv_output,warped_back_adv_output
     
     
-    def forward(self, data,chain_of_transforms=None,norm_image_fn=None):
+    def forward(self, data,chain_of_transforms=None):
         '''
         forward the data to get transformed data
         :param data: input images x, NCHW
@@ -189,7 +192,6 @@ class ComposeAdversarialTransformSolver(object):
             data = transform.forward(data)
             self.diffs.append(transform.diff)
         if self.if_norm_image:
-            if norm_image_fn is None:
                 # by default, rescale images to 0,1 
                 norm_image_fn = rescale_intensity
             ## norm image
