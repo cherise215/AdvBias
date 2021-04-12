@@ -1,5 +1,6 @@
 import os
 import torch
+import contextlib
 
 def rescale_intensity(data,new_min=0,new_max=1,eps=1e-20):
     '''
@@ -11,7 +12,7 @@ def rescale_intensity(data,new_min=0,new_max=1,eps=1e-20):
     data = data.view(bs*c, -1)
     old_max = torch.max(data, dim=1, keepdim=True).values
     old_min = torch.min(data, dim=1, keepdim=True).values
-    new_data = (data - old_min+eps) / (old_max - old_min + eps)*(new_max-new_min)+new_min
+    new_data = (data - old_min) / (old_max - old_min + eps)*(new_max-new_min)+new_min
     new_data = new_data.view(bs, c, h, w)
     return new_data
 
@@ -30,3 +31,15 @@ def check_dir(dir_path, create=False):
         if create:
             os.makedirs(dir_path)
         return -1
+
+
+
+@contextlib.contextmanager
+def _disable_tracking_bn_stats(model):
+    def switch_attr(m):
+        if hasattr(m, 'track_running_stats'):
+            m.track_running_stats ^= True
+
+    model.apply(switch_attr)
+    yield
+    model.apply(switch_attr)

@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 
 from loss import calc_segmentation_consistency
-from utils import rescale_intensity
+from utils import rescale_intensity,_disable_tracking_bn_stats
 
 class ComposeAdversarialTransformSolver(object):
     """
@@ -27,7 +27,7 @@ class ComposeAdversarialTransformSolver(object):
         self.divergence_types=divergence_types
         self.require_bi_loss = self.if_contains_geo_transform()
         self.disable_adv_noise=disable_adv_noise
-        self.if_norm_image = if_norm_image
+        self.if_norm_image = if_norm_image ## we found disabling it towards better performance.
         ## change to your own image normalization functions,by default, rescale images to 0,1 
 
         self.norm_image_fn=rescale_intensity
@@ -152,7 +152,8 @@ class ComposeAdversarialTransformSolver(object):
         model.train()
         model.zero_grad()
         with torch.enable_grad():
-            adv_output = model(adv_data)
+            with _disable_tracking_bn_stats(model):
+                adv_output = model(adv_data)
        
         ## calc divergence loss in bi-directional fashion when geometric transformation is involved
         if self.if_contains_geo_transform(chain_of_transforms):
@@ -436,7 +437,7 @@ if __name__ == "__main__":
     augmentor_bias= AdvBias(
                  config_dict={'epsilon':0.3,
                  'xi':0.1,
-                 'control_point_spacing':[28,28],
+                 'control_point_spacing':[32,32],
                  'downscale':2,
                  'data_size':image_size,
                  'interpolation_order':3,

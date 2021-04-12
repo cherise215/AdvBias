@@ -95,7 +95,7 @@ class AdvBias(AdvTransformBase):
 
     def rescale_parameters(self,power_iteration=False):
         ## restrict control points values in the 1-ball space
-        self.param=self.unit_normalize(self.param, p_type ='l2')
+        self.param=self.unit_normalize(self.param, p_type ='l2')*self.epsilon
     
     def optimize_parameters(self,power_iteration=False, step_size=1):
         if self.debug: print ('optimize bias')
@@ -121,7 +121,8 @@ class AdvBias(AdvTransformBase):
         assert self.param is not None, 'init param before transform data'
         
         bias_field = self.compute_smoothed_bias(self.param)    
-        bias_field = self.rescale_bias(bias_field,magnitude=self.epsilon)
+        # disable it in new version, where the magnitude is purely controlled by the cpoints themselves
+        # bias_field = self.rescale_bias(bias_field,magnitude=self.epsilon)
         self.bias_field =bias_field
         self.diff=bias_field
 
@@ -192,7 +193,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         else:
             raise  NotImplementedError
         
-        self.param = self.unit_normalize(self.param, p_type ='l2')
+        self.param = self.unit_normalize(self.param, p_type ='l2')*self.epsilon
         self.param = self.param.to(dtype=self._dtype, device=self._device)
 
         # convert to integer
@@ -205,7 +206,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         self.interp_kernel=self.get_bspline_kernel(order=self.order, spacing=self.spacing)
         self.interp_kernel=self.interp_kernel.to(self.param.device)
         self.bias_field = self.compute_smoothed_bias(self.param,padding=self._padding,stride=self._stride)
-        self.bias_field = self.rescale_bias(self.bias_field)        
+        # self.bias_field = self.rescale_bias(self.bias_field)        
         if self.debug:
             print('initialize {} control points'.format(str(self.param.size())))
       
@@ -234,10 +235,12 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
         ## recover bias field to original image resolution for efficiency.
         if self.debug: print ('after intep, size:',bias_field_tmp.size())
-        scale_factor = self._image_size[0] / bias_field_tmp.size(2)
-        if scale_factor>1:
-            upsampler = torch.nn.Upsample(scale_factor=scale_factor, mode='bilinear',
-                                            align_corners=True)
+        scale_factor_h = self._image_size[0] / bias_field_tmp.size(2)
+        scale_factor_w = self._image_size[0] / bias_field_tmp.size(2)
+
+        if scale_factor_h>1 or scale_factor_w>1:
+            upsampler = torch.nn.Upsample(scale_factor=(scale_factor_h,scale_factor_w), mode='bilinear',
+                                            align_corners=False)
             diff_bias = upsampler(bias_field_tmp)
         else:
             diff_bias=bias_field_tmp
@@ -249,25 +252,25 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
 
 
-    def rescale_bias(self,bias_field,magnitude=None):
-        """[summary]
-        rescale the bias field so that it values fall in [1-magnitude, 1+magnitude]
-        Args:
-            bias_field ([torch 4d tensor]): [description]
-            magnitude ([scalar], optional): [description]. Defaults to use predefined value.
+    # def rescale_bias(self,bias_field,magnitude=None):
+    #     """[summary]
+    #     rescale the bias field so that it values fall in [1-magnitude, 1+magnitude]
+    #     Args:
+    #         bias_field ([torch 4d tensor]): [description]
+    #         magnitude ([scalar], optional): [description]. Defaults to use predefined value.
 
-        Returns:
-            [type]: [description]
-        """
-        if magnitude is None:
-            magnitude=self.magnitude
-        assert magnitude>0
+    #     Returns:
+    #         [type]: [description]
+    #     """
+    #     if magnitude is None:
+    #         magnitude=self.magnitude
+    #     assert magnitude>0
 
-        bias_field =rescale_intensity(bias_field,1-magnitude,1+magnitude)
+    #     bias_field =rescale_intensity(bias_field,1-magnitude,1+magnitude)
 
-        if self.debug:
-            print('L_infinity: max|bias-id|', torch.max(torch.abs(bias_field-1)))
-        return bias_field
+    #     if self.debug:
+    #         print('L_infinity: max|bias-id|', torch.max(torch.abs(bias_field-1)))
+    #     return bias_field
 
 
     def get_bspline_kernel(self,spacing, order=3):
@@ -295,9 +298,7 @@ if __name__ == "__main__":
     log_dir = "./result/log/debug/"
     check_dir(log_dir, create=True)
     images = torch.ones(2,1,128,128).cuda()
-    images[:,:,::2,::2]=2.0
-    images[:,:,::3,::3]=3.0
-    images[:,:,::1,::1]=1.0
+    images[:,:,20:120,20:120]=128.0
     images=images.float()
     images.requires_grad=False
     print ('input:',images)
@@ -315,7 +316,7 @@ if __name__ == "__main__":
     
     plt.subplot(133)
     plt.imshow((transformed/images).detach().cpu().numpy()[0,0])
-    plt.savefig('test_bias.png')
+    plt.savefig(log_dir+'test_bias.png')
 
 
 
