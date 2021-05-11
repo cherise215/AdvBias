@@ -15,7 +15,7 @@ class ComposeAdversarialTransformSolver(object):
                 divergence_weights=[1.0,0.5],use_gpu: bool = True,
                 debug: bool = False,
                 disable_adv_noise = False,
-                if_norm_image=False
+                if_norm_image=False,
                 ):
         '''
         adversarial data augmentation solver
@@ -31,7 +31,6 @@ class ComposeAdversarialTransformSolver(object):
         ## change to your own image normalization functions,by default, rescale images to 0,1 
 
         self.norm_image_fn=rescale_intensity
-
     
         
     def adversarial_training(self,data,model,init_output=None,lazy_load=False,n_iter=1, optimization_mode='chain',
@@ -367,10 +366,8 @@ class ComposeAdversarialTransformSolver(object):
     
     
     def get_init_output(self,model,data):
-        model.eval()
         with torch.no_grad():
             reference_output = model(data)
-        model.train()
         return reference_output
     
     def backward(self,data,chain_of_transforms=None):
