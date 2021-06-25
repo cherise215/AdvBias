@@ -4,17 +4,14 @@ import torch
 
 
 
+
 class AdvTransformBase(object):
     """
      Adv Transformer base
     """
 
     def __init__(self, 
-                 config_dict={'size':1,
-                 'mean':0,
-                 'std':0.1,
-                 'xi':1e-6
-
+                 config_dict={
                  },
     
                  use_gpu:bool = True, debug: bool = False):
@@ -28,60 +25,57 @@ class AdvTransformBase(object):
         self.is_training=False
         self.use_gpu = use_gpu
         self.debug = debug
+        self.diff =None
+        ## by default this is False
+        self.is_training =False
         if self.use_gpu:
             self.device  = torch.device('cuda')
         else:
             self.device = torch.device('cpu')
        
-    def init_config(self,config_dict):
+    def init_config(self):
         '''
         initialize a set of transformation configuration parameters
         '''
         if self.debug: print ('init base class')
-        self.size = config_dict['size']
-        self.mean = config_dict['mean']
-        self.std = config_dict['std']
-        self.xi = config_dict['xi']
+        # self.size = config_dict['size']
+        # self.mean = config_dict['mean']
+        # self.std = config_dict['std']
+        # self.xi = config_dict['xi']
+        raise NotImplementedError
 
     def init_parameters(self):
         '''
         initialize transformation parameters
         return random transformaion parameters
         '''
-        self.init_config(self.config_dict)
-        noise = torch.randn(self.size,device=self.device, dtype = torch.float32)*self.std+self.mean
-        self.param=noise
-        return noise
+        raise NotImplementedError
+        # self.init_config()
+        # noise = torch.randn(self.size,device=self.device, dtype = torch.float32)*self.std+self.mean
+        # self.param=noise
+        # return noise
 
     def set_parameters(self,param):
-        self.param=param.detach()
-
-
-    def make_small_parameters(self):
-        self.param = self.xi*self.unit_normalize(self.param)
-       
+        self.param=param.detach().clone()       
 
     def get_parameters(self):
         return self.param
 
-    def train(self):
+    def train(self,power_iteration=False):
         self.is_training = True
-        self.param = torch.nn.Parameter(self.param, requires_grad=True)
+        self.param = self.param.detach().clone()
+        self.param.requires_grad=True
     
     def eval(self):
         self.param.requires_grad=False
         self.is_training =False
 
     def rescale_parameters(self):
-        self.param = self.xi*unit_normalize(self.param)
-        return self.param
+        raise NotImplementedError
 
-    def optimize_parameters(self,set=False):
-        grad = self.param.grad.sign()
-        if self.debug: print ('grad',grad.size())
-        if set:
-            self.param = grad.detach()
-        return self.param
+    def optimize_parameters(self):
+        raise NotImplementedError
+        
 
     def forward(self, data):
         '''
@@ -90,41 +84,46 @@ class AdvTransformBase(object):
         :return:
         tensor: transformed images
         '''
-        assert self.param is not None, 'init param before transform data'
-        transformed_input = data+self.param
-        if self.debug:
-            print ('transformed',transformed_input.size())
-        return transformed_input
+        raise NotImplementedError
+
 
     def backward(self,data):
-        assert self.param is not None, 'init param before transform data'
-        warped_back_output = data-self.param
-        if self.debug:
-            print ('back:',warped_back_output.size())
-        return warped_back_output
+        raise NotImplementedError
+
 
     def unit_normalize(self,d, p_type='l2'):
+        old_size=d.size()
+        d_flatten=d.view(d.size(0),-1)
         if p_type=='l1':
-           old_size=d.size()
-           d_flatten=d.view(d.size(0),-1)
            norm= d_flatten.norm(p=1, dim=1, keepdim=True)
-           d_normalized = d_flatten.div(norm.expand_as(d_flatten))
-           return d_normalized.view(old_size)
+           d = d_flatten.div(norm.expand_as(d_flatten))
         elif p_type =='infinity':
-            d_abs_max = torch.max(
-            torch.abs(d.view(d.size(0), -1)), 1, keepdim=True)[0].view(
-            d.size(0), 1, 1, 1)
+                      
+            d_abs_max = torch.max(d_flatten,1, keepdim=True)[0].expand_as(d_flatten)
             # print(d_abs_max.size())
-            d /= (1e-20 + d_abs_max) ## d' =d/d_max 
-        if p_type=='l2':
-            d_abs_max = torch.max(
-            torch.abs(d.view(d.size(0), -1)), 1, keepdim=True)[0].view(
-            d.size(0), 1, 1, 1)
-            # print(d_abs_max.size())
-            d /= (1e-20 + d_abs_max) ## d' =d/d_max 
-            d /= torch.sqrt(1e-6 + torch.sum(
-                torch.pow(d, 2.0), tuple(range(1, len(d.size()))), keepdim=True)) ##d'/sqrt(d'^2)
-        return d
+            d =d_flatten/(1e-20 + d_abs_max) ## d' =d/d_max 
+
+        elif p_type=='l2':
+            l = len(d.shape) - 1
+            d_norm = torch.norm(d.view(d.shape[0], -1), dim=1).view(-1, *([1]*l))
+            d = d / (d_norm + 1e-20)
+        return d.view(old_size)
+ 
+    def rescale_intensity(self,data,new_min=0,new_max=1,eps=1e-20):
+        '''
+        rescale pytorch batch data
+        :param data: N*1*H*W
+        :return: data with intensity ranging from 0 to 1
+        '''
+        bs, c , h, w = data.size(0),data.size(1),data.size(2), data.size(3)
+        flatten_data = data.view(bs*c, -1)
+        old_max = torch.max(flatten_data, dim=1, keepdim=True).values
+        old_min = torch.min(flatten_data, dim=1, keepdim=True).values
+        new_data = (flatten_data - old_min+eps) / (old_max - old_min + eps)*(new_max-new_min)+new_min
+        new_data = new_data.view(bs, c, h, w)
+        return new_data
+   
+
     
    
 if __name__ == "__main__":

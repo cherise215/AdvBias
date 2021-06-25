@@ -5,15 +5,14 @@ import numpy as np
 from adv_transformation_base import AdvTransformBase 
 
 
-
-def bspline_kernel_2d(sigma=[1, 1], order=2, asTensor=False, dtype=torch.float32, device='gpu'):
+def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32, device='gpu'):
     '''
-    generate bspline 2D kernel matrix.
+    generate bspline 2D kernel matrix for interpolation
     From wiki: https://en.wikipedia.org/wiki/B-spline, Fast b-spline interpolation on a uniform sample domain can be
     done by iterative mean-filtering
     :param sigma: tuple integers, control smoothness
-    :param order: the order of interpolation
-    :param asTensor:
+    :param order: the order of interpolation, default=3
+    :param asTensor: if true, return torch tensor rather than numpy array
     :param dtype: data type
     :param use_gpu: bool
     :return:
@@ -36,14 +35,14 @@ class AdvBias(AdvTransformBase):
     """
     def __init__(self, 
                  config_dict={
-                'epsilon':0.3, 
-                 'xi':1e-6,
-                 'control_point_spacing':[32,32],
-                 'downscale':2,
-                 'data_size':[2,1,128,128],
+                'epsilon':0.3, #bias field magnitude
+                 'xi':1e-6, ## for power iteration
+                 'control_point_spacing':[32,32],# spacings between two points along x and y direction.
+                 'downscale':2, ## we downsample images to reduce computational costs, especially with large spacing along images. To get true spacings, one should multiply control point spacing with downscale.
+                 'data_size':[2,1,128,128], 
                  'interpolation_order':3,
-                 'init_mode':'gaussian',
-                 'space':'log'},
+                 'init_mode':'random',
+                 'space':'log'}, 
                  power_iteration=False,
                  use_gpu:bool = True, debug: bool = False):
         super(AdvBias, self).__init__(config_dict=config_dict,use_gpu=use_gpu,debug=debug)
@@ -60,7 +59,6 @@ class AdvBias(AdvTransformBase):
         self.control_point_spacing = config_dict['control_point_spacing']
         self.downscale = config_dict['downscale']
         self.interpolation_order = config_dict['interpolation_order']
-       
         self.space=config_dict['space']
         self.init_mode=config_dict['init_mode']
         
@@ -81,9 +79,7 @@ class AdvBias(AdvTransformBase):
         self.magnitude=self.epsilon
         self.order = self.interpolation_order
         self.downscale=self.downscale ## reduce image size to save memory
-       
-        self.use_log = True #if self.space == 'log' else False
-
+        self.use_log = True if self.space == 'log' else False
         ## contruct and initialize control points grid with random values
         self.param,self.interp_kernel,self.bias_field = self.init_bias_field()
         return self.param
@@ -124,7 +120,7 @@ class AdvBias(AdvTransformBase):
             bias_field = self.compute_smoothed_bias(self.xi*self.param)    
         else:
             bias_field = self.compute_smoothed_bias(self.param)
-            bias_field = self.rescale_bias(bias_field,self.epsilon)
+            bias_field = self.clip_bias(bias_field,self.epsilon)
 
         self.bias_field =bias_field
         self.diff=bias_field
@@ -134,6 +130,10 @@ class AdvBias(AdvTransformBase):
             bias_field = bias_field.expand(data.size())
 
         transformed_input = bias_field*data
+
+        # rescale it to [0,1]
+        transformed_input=self.rescale_intensity(transformed_input)
+
     
         if self.debug:
             print ('bias transformed',transformed_input.size())
@@ -184,7 +184,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         if mode == 'gaussian':
             self.param = torch.ones(*self.cp_grid).normal_(mean=0,std=0.5) ##
         elif mode =='random':
-            self.param=(torch.rand(*self.cp_grid)*2-1)*0.5 ## -eps,eps
+            self.param=(torch.rand(*self.cp_grid)*2-1)*self.epsilon ## -eps,eps
             
         elif mode == 'identity':
             ## static initialization, bias free
@@ -205,7 +205,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         self.interp_kernel=self.get_bspline_kernel(order=self.order, spacing=self.spacing)
         self.interp_kernel=self.interp_kernel.to(self.param.device)
         self.bias_field = self.compute_smoothed_bias(self.param,padding=self._padding,stride=self._stride)
-        self.bias_field = self.rescale_bias(self.bias_field,self.epsilon)
+        self.bias_field = self.clip_bias(self.bias_field,self.epsilon)
         if self.debug:
             print('initialize {} control points'.format(str(self.param.size())))
       
@@ -251,9 +251,9 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
 
 
-    def rescale_bias(self,bias_field,magnitude=None):
+    def clip_bias(self,bias_field,magnitude=None):
         """[summary]
-        rescale the bias field so that it values fall in [1-magnitude, 1+magnitude]
+        ensure bias field falls in [1-magnitude, 1+magnitude]
         Args:
             bias_field ([torch 4d tensor]): [description]
             magnitude ([scalar], optional): [description]. Defaults to use predefined value.
@@ -286,6 +286,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         self._kernel.unsqueeze_(0).unsqueeze_(0)
         self._kernel = self._kernel.to(dtype=self._dtype, device=self._device)
         return self._kernel
+
     def get_name(self):
         return 'bias'
     def is_geometric(self):
@@ -294,15 +295,26 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    from utils import check_dir
-    log_dir = "./result/log/debug/"
-    check_dir(log_dir, create=True)
     images = torch.ones(2,1,128,128).cuda()
-    images[:,:,20:120,20:120]=128.0
+    images[:,:,::2,::2]=2.0
+    images[:,:,::3,::3]=3.0
+    images[:,:,::1,::1]=1.0
     images=images.float()
     images.requires_grad=False
     print ('input:',images)
-    augmentor= AdvBias(debug=True,use_gpu=True)
+    augmentor= AdvBias(
+               config_dict= {'epsilon':0.3, 
+                 'xi':1e-1,
+                 'control_point_spacing':[32,32],
+                 'downscale':2,
+                 'data_size':[2,1,128,128],
+                 'interpolation_order':3,
+                 'init_mode':'gaussian',
+                 'space':'log'},
+        power_iteration=False,
+        debug=True,use_gpu=True)
+
+    ## perform random bias field
     augmentor.init_parameters()
     transformed = augmentor.forward(images)
     error = transformed-images
@@ -316,7 +328,7 @@ if __name__ == "__main__":
     
     plt.subplot(133)
     plt.imshow((transformed/images).detach().cpu().numpy()[0,0])
-    plt.savefig(log_dir+'test_bias.png')
+    plt.savefig('./result/test_bias.png')
 
 
 

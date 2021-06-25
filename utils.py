@@ -36,10 +36,35 @@ def check_dir(dir_path, create=False):
 
 @contextlib.contextmanager
 def _disable_tracking_bn_stats(model):
-    def switch_attr(m):
-        if hasattr(m, 'track_running_stats'):
-            m.track_running_stats ^= True
+    def switch_attr(model, new_state=None,hist_states=None):
+        """[summary]
 
-    model.apply(switch_attr)
+        Args:
+            model ([torch.nn.Module]): [description]
+            new_state ([bool], optional): [description]. Defaults to None.
+            hist_states ([type], optional): [description]. Defaults to None.
+
+        Returns:
+            [type]: [description]
+        """
+        old_states={}
+        for name, module in model.named_children():
+            if hasattr(module, 'track_running_stats'):
+                old_state = module.track_running_stats
+                if hist_states is not None:
+                    module.track_running_stats=hist_states[name]
+                else:
+                    if new_state is not None:
+                        module.track_running_stats=new_state
+                old_states[name]=old_state
+        return old_states
+
+    old_states = switch_attr(model,False)
     yield
-    model.apply(switch_attr)
+    switch_attr(model,old_states)
+
+
+
+def set_grad(module, requires_grad=False):
+    for p in module.parameters(): # reset requires_grad
+        p.requires_grad = requires_grad
