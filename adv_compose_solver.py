@@ -446,7 +446,7 @@ if __name__ == "__main__":
     images = torch.randn(image_size).cuda()
     print ('input:',images)
 
-    sample_image_path='/vol/biomedic3/cc215/Project/DeformADA/Data/ACDC_small/ES/003_img.nrrd'
+    sample_image_path='./data/img.nrrd'
     sample_image = sitk.GetArrayFromImage(sitk.ReadImage(sample_image_path))[np.newaxis,:,:,:][:,[6],:,:]
     sample_image = (sample_image-sample_image.min())/(sample_image.max()-sample_image.min())
     sample_image_tensor= torch.from_numpy(sample_image).float()
