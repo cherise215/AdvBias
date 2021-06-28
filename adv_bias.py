@@ -35,8 +35,7 @@ class AdvBias(AdvTransformBase):
     """
     def __init__(self, 
                  config_dict={
-                'epsilon':0.3, #bias field magnitude
-                 'xi':1e-6, ## for power iteration
+                 'epsilon':0.3, #bias field magnitude
                  'control_point_spacing':[32,32],# spacings between two points along x and y direction.
                  'downscale':2, ## we downsample images to reduce computational costs, especially with large spacing along images. To get true spacings, one should multiply control point spacing with downscale.
                  'data_size':[2,1,128,128], 
@@ -46,15 +45,14 @@ class AdvBias(AdvTransformBase):
                  power_iteration=False,
                  use_gpu:bool = True, debug: bool = False):
         super(AdvBias, self).__init__(config_dict=config_dict,use_gpu=use_gpu,debug=debug)
-        self.param=None
         self.power_iteration=power_iteration
+  
 
     def init_config(self,config_dict):
         '''
         initialize a set of transformation configuration parameters
         '''
         self.epsilon = config_dict['epsilon']
-        self.xi = config_dict['xi']
         self.data_size = config_dict['data_size']
         self.control_point_spacing = config_dict['control_point_spacing']
         self.downscale = config_dict['downscale']
@@ -117,22 +115,23 @@ class AdvBias(AdvTransformBase):
         '''
         assert self.param is not None, 'init param before transform data'
         if self.is_training and self.power_iteration:
-            bias_field = self.compute_smoothed_bias(self.xi*self.param)    
+            xi = 1e-6 ##  a small step to estimate the direction
+            bias_field = self.compute_smoothed_bias(xi*self.param)    
         else:
             bias_field = self.compute_smoothed_bias(self.param)
-            bias_field = self.clip_bias(bias_field,self.epsilon)
+        bias_field = self.clip_bias(bias_field,self.epsilon)
 
         self.bias_field =bias_field
         self.diff=bias_field
 
-        ## in case the input image is a multi-channel input.
+        ## replicate the bias field along channel axis when the input image is a multi-channel input.
         if bias_field.size(1)<data.size(1):
             bias_field = bias_field.expand(data.size())
 
         transformed_input = bias_field*data
 
-        # rescale it to [0,1]
-        transformed_input=self.rescale_intensity(transformed_input)
+        # rescale the intensity back to [0,1]
+        # transformed_input=self.rescale_intensity(transformed_input)
 
     
         if self.debug:
@@ -200,21 +199,20 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         self._crop_start = self._crop_start.astype(dtype=int)
         self._crop_end = self._crop_end.astype(dtype=int)
 
-        size = [self.batch_size, 1] + new_image_size.astype(dtype=int).tolist()
         ## initialize interpolation kernel
-        self.interp_kernel=self.get_bspline_kernel(order=self.order, spacing=self.spacing)
-        self.interp_kernel=self.interp_kernel.to(self.param.device)
+        interp_kernel=self.get_bspline_kernel(order=self.order, spacing=self.spacing)
+        self.interp_kernel=interp_kernel.to(self.param.device)
         self.bias_field = self.compute_smoothed_bias(self.param,padding=self._padding,stride=self._stride)
         self.bias_field = self.clip_bias(self.bias_field,self.epsilon)
         if self.debug:
             print('initialize {} control points'.format(str(self.param.size())))
-      
+       
         return self.param,self.interp_kernel,self.bias_field
 
 
     def compute_smoothed_bias(self, cpoint=None,interpolation_kernel=None, padding=None,stride=None):
         '''
-        generate bias field given the cppints N*1*k*l
+        generate bias field given the cpoints N*1*k*l
         :return: bias field bs*1*H*W
         '''
         if interpolation_kernel is None:
@@ -304,7 +302,6 @@ if __name__ == "__main__":
     print ('input:',images)
     augmentor= AdvBias(
                config_dict= {'epsilon':0.3, 
-                 'xi':1e-1,
                  'control_point_spacing':[32,32],
                  'downscale':2,
                  'data_size':[2,1,128,128],

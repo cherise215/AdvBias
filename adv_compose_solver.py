@@ -12,7 +12,6 @@ class ComposeAdversarialTransformSolver(object):
                 chain_of_transforms=[],divergence_types=['kl','contour'],
                 divergence_weights=[1.0,0.5],use_gpu: bool = True,
                 debug: bool = False,
-                disable_adv_noise = False,
                 if_norm_image=False,
                 is_gt=False,
                 class_weights=None
@@ -25,8 +24,6 @@ class ComposeAdversarialTransformSolver(object):
         self.debug = debug
         self.divergence_weights=divergence_weights
         self.divergence_types=divergence_types
-        self.require_bi_loss = self.if_contains_geo_transform()
-        self.disable_adv_noise=disable_adv_noise
         self.if_norm_image = if_norm_image
         self.is_gt=is_gt
         self.class_weights=class_weights
@@ -64,11 +61,6 @@ class ComposeAdversarialTransformSolver(object):
         else:
             if n_iter==0: optimize_flags = [False] *len(self.chain_of_transforms)
             else: optimize_flags = [True] *len(self.chain_of_transforms)
-        
-        if self.disable_adv_noise:
-            for i, (opt, tr) in enumerate(zip(optimize_flags,self.chain_of_transforms)):
-                if tr.get_name()=='noise':
-                    optimize_flags[i]=False
 
         if isinstance(power_iteration, bool):
             power_iterations=[power_iteration]*len(self.chain_of_transforms)
@@ -84,7 +76,6 @@ class ComposeAdversarialTransformSolver(object):
         for i,power_iteration in enumerate(power_iterations):
             self.chain_of_transforms[i].power_iteration = power_iteration
 
-                # print ('power_iterations',power_iterations)
         ## 2. get reference predictions f(x)
         if init_output is None:
             init_output = self.get_init_output(data=data,model=model)
@@ -94,7 +85,7 @@ class ComposeAdversarialTransformSolver(object):
         if n_iter ==1 or n_iter>1:
             if optimization_mode == 'chain':
                 optimized_transforms = self.optimizing_transform(data=data,model=model,init_output=init_output,n_iter=n_iter,optimize_flags=optimize_flags)            
-            elif optimization_mode =='independent':
+            elif optimization_mode =='combination':
                 optimized_transforms = self.optimizing_transform_independent(data=data,model=model,init_output=init_output,n_iter=n_iter,optimize_flags=optimize_flags,stack=False)
             elif optimization_mode =='independent_and_compose':
                 optimized_transforms = self.optimizing_transform_independent(data=data,model=model,init_output=init_output,n_iter=n_iter,optimize_flags=optimize_flags,stack=True)
@@ -109,7 +100,7 @@ class ComposeAdversarialTransformSolver(object):
         ## 4. augment data with optimized transformation t, and calc the adversarial consistency loss with the composite transformation
         if optimization_mode == 'chain':
             dist,adv_data,adv_output,warped_back_adv_output = self.calc_adv_consistency_loss(data.detach().clone(),model,init_output =init_output,chain_of_transforms=self.chain_of_transforms)
-        elif optimization_mode == 'independent':
+        elif optimization_mode == 'combination':
             ## augment data with each type of adv transform indepdently, the loss is defined as the average of each adv consistency loss
             dist = torch.tensor(0., device= data.device)
             for transform in self.chain_of_transforms:
@@ -300,7 +291,9 @@ class ComposeAdversarialTransformSolver(object):
         
     def optimizing_transform(self, model,data,init_output,optimize_flags, n_iter=1):
         ## optimize each transform with one forward pass.
-        set_grad(model, requires_grad=False)
+        # set_grad(model, requires_grad=False)
+        old_state = model.training
+        model.eval()
         for i in range(n_iter):
             torch.cuda.empty_cache()
             model.zero_grad()
@@ -343,12 +336,15 @@ class ComposeAdversarialTransformSolver(object):
             transform.eval()
             transforms.append(transform)
         set_grad(model, requires_grad=True)
+        model.train(old_state)
         return transforms
     
     
     def optimizing_transform_independent(self,data,model,init_output,optimize_flags,lazy_load=False,n_iter=1,stack=False):
         ## optimize each transform individually.
+        old_state = model.training
         set_grad(model, requires_grad=False)
+        model.eval()
         new_transforms = []
         for opti_flag,transform in zip(optimize_flags,self.chain_of_transforms):
             torch.cuda.empty_cache()
@@ -385,6 +381,7 @@ class ComposeAdversarialTransformSolver(object):
 
             new_transforms.append(transform)
         set_grad(model, requires_grad=True)
+        model.train(old_state)
         return new_transforms
     
     
@@ -459,12 +456,11 @@ if __name__ == "__main__":
     ## 2. set up data augmentation and its optimizer
     augmentor_bias= AdvBias(
                  config_dict={'epsilon':0.3,
-                 'xi':0.1,
                  'control_point_spacing':[32,32],
                  'downscale':2,
                  'data_size':image_size,
                  'interpolation_order':3,
-                 'init_mode':'gaussian',
+                 'init_mode':'random',
                  'space':'log'},debug=True)
 
     chain_of_transforms=[augmentor_bias]
@@ -478,7 +474,7 @@ if __name__ == "__main__":
         divergence_weights=[1.0,0.5],
         use_gpu= True,
         debug=True,
-        disable_adv_noise=True)
+       )
 
     ## 3. set up  the segmentor
     model = torch.nn.Conv2d(1,4,3,1,1)

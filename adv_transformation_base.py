@@ -32,6 +32,9 @@ class AdvTransformBase(object):
             self.device  = torch.device('cuda')
         else:
             self.device = torch.device('cpu')
+        self.init_config(config_dict)
+        self.init_parameters()
+
        
     def init_config(self):
         '''
@@ -40,7 +43,7 @@ class AdvTransformBase(object):
         if self.debug: print ('init base class')
         # self.size = config_dict['size']
         # self.mean = config_dict['mean']
-        # self.std = config_dict['std']
+        # self.std = config_dict['std'
         # self.xi = config_dict['xi']
         raise NotImplementedError
 

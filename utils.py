@@ -2,6 +2,9 @@ import os
 import torch
 import contextlib
 
+from models.unet import UNet 
+
+
 def rescale_intensity(data,new_min=0,new_max=1,eps=1e-20):
     '''
     rescale pytorch batch data
@@ -68,3 +71,25 @@ def _disable_tracking_bn_stats(model):
 def set_grad(module, requires_grad=False):
     for p in module.parameters(): # reset requires_grad
         p.requires_grad = requires_grad
+
+
+def get_unet_model(model_path,num_classes=2,device=None, model_arch='UNet_16'):
+    '''
+    init model and load the trained parameters from the disk.
+    model path: string. path to the model checkpoint
+    device: torch device
+    return pytorch nn.module model 
+    '''
+    assert check_dir(model_path)==1, model_path+' does not exists'
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    if model_arch=='UNet_16':
+        model=UNet(input_channel=1, num_classes=num_classes,feature_scale=4)
+    elif model_arch=='UNet_64':
+        model=UNet(input_channel=1, num_classes=num_classes,feature_scale=1)
+    else:
+        raise NotImplementedError
+    model.load_state_dict(torch.load(model_path)) 
+    model=model.to(device)
+    return model

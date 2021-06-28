@@ -158,7 +158,7 @@ def contour_loss(input, target,  use_gpu=True,ignore_background=True,one_hot_tar
     g_y_truth = conv_y(target_object_maps)*mask[:,:object_classes]
     g_x_truth = conv_x(target_object_maps)*mask[:,:object_classes]
     ## mse loss
-    loss =torch.nn.MSELoss(reduction='mean')(input=g_x_pred,target=g_x_truth) +torch.nn.MSELoss(reduction='mean')(input=g_y_pred,target=g_y_truth)
+    loss =0.5*(torch.nn.MSELoss(reduction='mean')(input=g_x_pred,target=g_x_truth) +torch.nn.MSELoss(reduction='mean')(input=g_y_pred,target=g_y_truth))
     return loss
 
 
@@ -292,3 +292,24 @@ class SoftDiceLoss(nn.Module):
         score = 1.0 - score / (float(batch_size) * float(self.n_classes))
       
         return score
+
+class One_Hot(nn.Module):
+    def __init__(self, depth, use_gpu=True):
+        super(One_Hot, self).__init__()
+        self.depth = depth
+        if use_gpu:
+            self.ones = torch.sparse.torch.eye(depth).cuda()
+        else:
+            self.ones = torch.sparse.torch.eye(depth)
+
+    def forward(self, X_in):
+        n_dim = X_in.dim()
+        output_size = X_in.size() + torch.Size([self.depth])
+        num_element = X_in.numel()
+        X_in = X_in.data.long().view(num_element)
+        out = Variable(self.ones.index_select(0, X_in)).view(output_size)
+        return out.permute(0, -1, *range(1, n_dim)).squeeze(dim=2).float()
+
+    def __repr__(self):
+        return self.__class__.__name__ + "({})".format(self.depth)
+
