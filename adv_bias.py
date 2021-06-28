@@ -50,7 +50,7 @@ class AdvBias(AdvTransformBase):
 
     def init_config(self,config_dict):
         '''
-        initialize a set of transformation configuration parameters
+        initialize a set of configuration parameters 
         '''
         self.epsilon = config_dict['epsilon']
         self.data_size = config_dict['data_size']

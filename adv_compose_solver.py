@@ -44,7 +44,7 @@ class ComposeAdversarialTransformSolver(object):
             n_iter (int, optional): innner iterations to optimize data augmentation. Defaults to 1.
             optimization_mode (str, optional): for composed transformation, use chain or independent optimization. supports 'chain','independent',"independent_and_compose". Defaults to 'chain'.
             optimize_flags ([list of boolean], optional): [description]. Defaults to None.
-            power_iteration ([list of boolean], optional): [description]. Defaults to False.
+            power_iteration ([list of boolean], optional): [description]. Defaults to False. if turn on, will use power iteration to accelerate the searching. (best with adv noise)
         Raises:
             NotImplementedError: [check whether the string for specifying optimization_mode is valid]
 
