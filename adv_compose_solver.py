@@ -386,10 +386,11 @@ class ComposeAdversarialTransformSolver(object):
     
     
     def get_init_output(self,model,data):
-        # model.eval()
+        old_state = model.training
+        model.eval()
         with torch.no_grad():
             reference_output = model(data)
-        # model.train()
+        model.train(old_state)
 
         return reference_output
     
