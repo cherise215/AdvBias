@@ -203,8 +203,7 @@ class ComposeAdversarialTransformSolver(object):
             self.diffs.append(transform.diff)
             is_training = (is_training or transform.is_training)
 
-        if not is_training:
-            data = torch.clamp(data, 0, 1)
+
         return data
     
    
@@ -293,7 +292,7 @@ class ComposeAdversarialTransformSolver(object):
         ## optimize each transform with one forward pass.
         # set_grad(model, requires_grad=False)
         old_state = model.training
-        model.eval()
+        # model.eval()
         for i in range(n_iter):
             torch.cuda.empty_cache()
             model.zero_grad()
@@ -344,7 +343,7 @@ class ComposeAdversarialTransformSolver(object):
         ## optimize each transform individually.
         old_state = model.training
         set_grad(model, requires_grad=False)
-        model.eval()
+        # model.eval()
         new_transforms = []
         for opti_flag,transform in zip(optimize_flags,self.chain_of_transforms):
             torch.cuda.empty_cache()
@@ -387,7 +386,7 @@ class ComposeAdversarialTransformSolver(object):
     
     def get_init_output(self,model,data):
         old_state = model.training
-        model.eval()
+        # model.eval()
         with torch.no_grad():
             reference_output = model(data)
         model.train(old_state)
@@ -415,7 +414,20 @@ class ComposeAdversarialTransformSolver(object):
         for transform in reversed(chain_of_transforms):
             data = transform.predict_backward(data)
         return data
-
+        
+    def rescale_intensity(self,data,new_min=0,new_max=1,eps=1e-20):
+        '''
+        rescale pytorch batch data
+        :param data: N*1*H*W
+        :return: data with intensity ranging from 0 to 1
+        '''
+        bs, c , h, w = data.size(0),data.size(1),data.size(2), data.size(3)
+        flatten_data = data.view(bs*c, -1)
+        old_max = torch.max(flatten_data, dim=1, keepdim=True).values
+        old_min = torch.min(flatten_data, dim=1, keepdim=True).values
+        new_data = (flatten_data - old_min+eps) / (old_max - old_min + eps)*(new_max-new_min)+new_min
+        new_data = new_data.view(bs, c, h, w)
+        return new_data
 
 
 

@@ -17,14 +17,14 @@ def calc_segmentation_consistency(output, reference,divergence_types=['kl','cont
         scales (list of int): specify a list of downsampling rates so that losses will be calculated on different scales. Defaults to [0].
         mask ([tensor], 0-1 onehotmap): [N*1*H*W]. No losses on the elements with mask=0. Defaults to None.
     Raises:
-        NotImplementedError: when loss name is not in ['kl','mse','contour']
+        NotImplementedError: when loss name is not in ['kl','ce','mse','Dice','contour']
     Returns:
         loss (tensor float): 
     """
     dist = 0.
     num_classes = reference.size(1)
     if mask is None:
-        ## apply masks so that only gradients on certain regions will be backpropagated. 
+        ## apply masks so that only gradients on non-zero regions  will be backpropagated. 
         mask = torch.ones_like(output).float().to(reference.device)
 
 
