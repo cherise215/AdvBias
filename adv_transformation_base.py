@@ -33,7 +33,6 @@ class AdvTransformBase(object):
         else:
             self.device = torch.device('cpu')
         self.init_config(config_dict)
-        self.init_parameters()
 
        
     def init_config(self):
@@ -87,6 +86,8 @@ class AdvTransformBase(object):
         :return:
         tensor: transformed images
         '''
+    
+
         raise NotImplementedError
 
 

@@ -290,8 +290,8 @@ class ComposeAdversarialTransformSolver(object):
         
     def optimizing_transform(self, model,data,init_output,optimize_flags, n_iter=1):
         ## optimize each transform with one forward pass.
-        # set_grad(model, requires_grad=False)
-        old_state = model.training
+        set_grad(model, requires_grad=False)
+        # old_state = model.training
         # model.eval()
         for i in range(n_iter):
             torch.cuda.empty_cache()
@@ -335,13 +335,13 @@ class ComposeAdversarialTransformSolver(object):
             transform.eval()
             transforms.append(transform)
         set_grad(model, requires_grad=True)
-        model.train(old_state)
+        # model.train(old_state)
         return transforms
     
     
     def optimizing_transform_independent(self,data,model,init_output,optimize_flags,lazy_load=False,n_iter=1,stack=False):
         ## optimize each transform individually.
-        old_state = model.training
+        # old_state = model.training
         set_grad(model, requires_grad=False)
         # model.eval()
         new_transforms = []
@@ -380,17 +380,16 @@ class ComposeAdversarialTransformSolver(object):
 
             new_transforms.append(transform)
         set_grad(model, requires_grad=True)
-        model.train(old_state)
+        # model.train(old_state)
         return new_transforms
     
     
     def get_init_output(self,model,data):
-        old_state = model.training
+        # old_state = model.training
         # model.eval()
         with torch.no_grad():
             reference_output = model(data)
-        model.train(old_state)
-
+        # model.train(old_state)
         return reference_output
     
     def backward(self,data,chain_of_transforms=None):

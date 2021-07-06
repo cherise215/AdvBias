@@ -73,7 +73,7 @@ class AdvBias(AdvTransformBase):
         self.spacing =  self.control_point_spacing
         self._dtype= torch.float32
         self.batch_size=self.data_size[0]
-        self._image_size = np.array([self.data_size[2], self.data_size[3]])
+        self._image_size = np.array(self.data_size[2:])
         self.magnitude=self.epsilon
         self.order = self.interpolation_order
         self.downscale=self.downscale ## reduce image size to save memory
@@ -90,7 +90,7 @@ class AdvBias(AdvTransformBase):
 
     def rescale_parameters(self):
         ## restrict control points values in the 1-ball space
-        self.param=self.unit_normalize(self.param, p_type ='l2')
+        self.param=self.unit_normalize(self.param, p_type ='l2')*self.epsilon
 
     def optimize_parameters(self,step_size=1):
         if self.power_iteration:
@@ -113,7 +113,10 @@ class AdvBias(AdvTransformBase):
         :return:
         tensor: transformed images
         '''
-        assert self.param is not None, 'init param before transform data'
+        if self.param is None:
+            self.init_parameters()
+            self.param,self.interp_kernel,self.bias_field = self.init_bias_field()
+
         if self.is_training and self.power_iteration:
             xi = 1e-6 ##  a small step to estimate the direction
             bias_field = self.compute_smoothed_bias(xi*self.param)    
@@ -170,8 +173,6 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         inner_image_size = np.multiply(self._stride, cp_grid) - (self._stride - 1)
         # add one control point outside each side, e.g.2 by 2 grid, requires 4 by 4 control points
         cp_grid = cp_grid + 2
-        # image size with additional control points
-        new_image_size = np.multiply(self._stride, cp_grid) - (self._stride - 1)
         # center image between control points
         image_size_diff = inner_image_size - self._image_size/(1.0*self.downscale)
         image_size_diff_floor = np.floor((np.abs(image_size_diff)/2))*np.sign(image_size_diff)
@@ -191,7 +192,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         else:
             raise  NotImplementedError
         
-        self.param = self.unit_normalize(self.param, p_type ='l2')
+        self.param = self.unit_normalize(self.param, p_type ='l2')*self.epsilon
         self.param = self.param.to(dtype=self._dtype, device=self._device)
 
         # convert to integer
