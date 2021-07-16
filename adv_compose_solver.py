@@ -62,8 +62,6 @@ class ComposeAdversarialTransformSolver(object):
         ## 1. set up optimization mode for each transformation
         if optimize_flags is not None:
             assert len(self.chain_of_transforms)==len(optimize_flags), 'must specify each transform is learnable or not'
-            if self.debug: 
-                print (optimize_flags)
         else:
             if n_iter==0: optimize_flags = [False] *len(self.chain_of_transforms)
             elif n_iter>0: 
@@ -140,7 +138,7 @@ class ComposeAdversarialTransformSolver(object):
         self.adv_data=adv_data
         self.adv_predict=adv_output
         if self.debug:
-            print ('outer loop loss',dist.item())
+            print ('[outer loop] loss',dist.item())
             print ('init out',init_output.size())
         return dist
 
@@ -326,7 +324,7 @@ class ComposeAdversarialTransformSolver(object):
              
             else:
                 dist = self.loss_fn(pred = perturbed_output, reference =init_output.detach())
-            if self.debug: print ('{} inner loop: dist {}'.format(str(i),dist.item()))
+            if self.debug: print ('[inner loop], step {}: dist {}'.format(str(i),dist.item()))
             dist.backward()
             for flag,transform in zip(optimize_flags,self.chain_of_transforms):
                 if flag:
