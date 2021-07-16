@@ -1,8 +1,8 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
-from loss import calc_segmentation_consistency
-from utils import _disable_tracking_bn_stats,set_grad
+from common.loss import calc_segmentation_consistency
+from common.utils import _disable_tracking_bn_stats,set_grad
 
 class ComposeAdversarialTransformSolver(object):
     """

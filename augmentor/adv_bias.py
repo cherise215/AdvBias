@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
-from adv_transformation_base import AdvTransformBase 
+from augmentor.adv_transformation_base import AdvTransformBase 
 
 
 def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32, device='gpu'):

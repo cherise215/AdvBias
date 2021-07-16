@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
-from adv_bias import AdvBias 
+from augmentor.adv_bias import AdvBias 
 
 
 """
