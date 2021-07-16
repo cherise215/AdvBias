@@ -60,7 +60,7 @@ class AdvBias3D(AdvBias):
         bias_field_tmp=bias_field[:, :,
                        stride[0] + self._crop_start[0]:-stride[0] - self._crop_end[0],
                        stride[1] + self._crop_start[1]:-stride[1] - self._crop_end[1],
-                        stride[2] + self._crop_start[1]:-stride[2] - self._crop_end[2],
+                        stride[2] + self._crop_start[2]:-stride[2] - self._crop_end[2],
                        ]
 
         ## recover bias field to original image resolution for efficiency.
