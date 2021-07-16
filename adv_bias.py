@@ -33,15 +33,23 @@ class AdvBias(AdvTransformBase):
     "Adv Bias"
     def __init__(self, 
                  config_dict={
-                'epsilon':0.3, 
-                 'control_point_spacing':[32,32],
-                 'downscale':2,
-                 'data_size':[2,1,128,128],
-                 'interpolation_order':3,
-                 'init_mode':'random',
-                 'space':'log'},
-                 power_iteration=False,
+                'epsilon':0.3, # magnitude, (0,1)
+                 'control_point_spacing':[32,32], ## spacings between two control points along the x- and y- direction.
+                 'downscale':2, ## downscale images to speed up the computation.
+                 'data_size':[2,1,128,128], ## [ns,ch,h,w], change it to your tensor size
+                 'interpolation_order':3, ## b-spline interpolation order
+                 'init_mode':'random', ## uniform sampling or sample from a gaussian distribution
+                 'space':'log'}, ## generate it in the log space rather than image space, bias =exp(bspline(cpoints)) other wise bias =1+ bspline(cpoints)
+                 power_iteration=False, ## perform power iteration to find the saddle points like virtual adversarial training
                  use_gpu = True, debug = False):
+        """[adv bias field augmentation]
+
+        Args:
+            config_dict (dict, optional): [description]. Defaults to { 'epsilon':0.3, 'control_point_spacing':[32,32], 'downscale':2, 'data_size':[2,1,128,128], 'interpolation_order':3, 'init_mode':'random', 'space':'log'}.
+            power_iteration (bool, optional): [description]. Defaults to False.
+            use_gpu (bool, optional): [description]. Defaults to True.
+            debug (bool, optional): [description]. Defaults to False.
+        """
         super(AdvBias, self).__init__(config_dict=config_dict,use_gpu=use_gpu,debug=debug)
         self.param=None
         self.power_iteration=power_iteration
@@ -50,7 +58,7 @@ class AdvBias(AdvTransformBase):
         '''
         initialize a set of transformation configuration parameters
         '''
-        self.epsilon = config_dict['epsilon']
+        self.epsilon = config_dict['epsilon'] 
         self.xi = 1e-6
         self.data_size = config_dict['data_size']
         self.control_point_spacing = config_dict['control_point_spacing']
@@ -145,7 +153,7 @@ class AdvBias(AdvTransformBase):
         
     def init_bias_field(self,init_mode=None):
         '''
-        init cp points, interpolation kernel, and resulted bias field.
+        init cp points, interpolation kernel, and  corresponding bias field.
         :param batch_size:
         :param spacing: tuple of ints
         :param order:
