@@ -5,6 +5,7 @@ Please cite our work if you find it useful in your work
 
 ## Introduction
  we propose an adversarial data augmentation method for training neural networks for medical image segmentation. Instead of generating pixel-wise adversarial attacks, our model generates plausible and realistic signal corruptions, which models the intensity inhomogeneities caused by a common type of artefacts in MR imaging: bias field. The proposed method does not rely on generative networks, and can be used as a plug-in module for general segmentation networks in both supervised and semi-supervised learning. 
+  <img align="center" src="assets/adv_bias.png" width="750">
 
 For more details please see our [MICCAI 2020 paper](https://arxiv.org/abs/2006.13322).
 
