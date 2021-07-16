@@ -199,3 +199,57 @@ class One_Hot(nn.Module):
     def __repr__(self):
         return self.__class__.__name__ + "({})".format(self.depth)
 
+
+
+
+def cross_entropy_2D(input, target, weight=None, size_average=True):
+    """[summary]
+    calc cross entropy loss computed on 2D images 
+    Args:
+        input ([torch tensor]): [4d logit] in the format of NCHW
+        target ([torch tensor]): 3D labelmap or 4d logit (before softmax), in the format of NCHW
+        weight ([type], optional): weights for classes. Defaults to None.
+        size_average (bool, optional): take the average across the spatial domain. Defaults to True.
+    Raises:
+        NotImplementedError: [description]
+
+    Returns:
+        [type]: [description]
+    """
+    n, c, h, w = input.size()
+    log_p = F.log_softmax(input, dim=1)
+    log_p = log_p.transpose(1, 2).transpose(2, 3).contiguous().view(-1, c)
+   
+    if len(target.size())==3:
+        target = target.view(target.numel())
+        if not weight is None:
+             ## sum(weight) =C,  for numerical stability.
+            weight = weight/weight.sum()*c
+        loss_vector = F.nll_loss(log_p, target, weight=weight, reduction="none")
+        loss = torch.sum(loss_vector)
+        if size_average:
+            loss /= (n*h*w)
+    elif len(target.size())==4:
+        ## ce loss=-qlog(p) 
+        reference= target
+        reference = reference.transpose(1, 2).transpose(2, 3).contiguous().view(-1, c) #M,C
+        if weight is None:
+            plogq = torch.sum(reference *log_p, dim=1)
+            plogq = torch.sum(plogq)
+            if size_average:
+                plogq/= (n*h*w)
+        else:
+            weight=np.array(weight)
+            ## sum(weight) =C
+            weight  = weight/weight.sum()*c
+            plogq_class_wise =reference *log_p
+            plogq_sum_class=0.
+            for i in range(c):
+                plogq_sum_class+=torch.sum(plogq_class_wise[:,i]*weight[i])
+            plogq = plogq_sum_class
+            if size_average:
+                plogq/= (n*h*w)  # only average loss on the mask entries with value =1
+        loss=-1*plogq
+    else:
+        raise NotImplementedError
+    return loss
