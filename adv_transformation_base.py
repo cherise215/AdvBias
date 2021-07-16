@@ -14,7 +14,7 @@ class AdvTransformBase(object):
                  config_dict={
                  },
     
-                 use_gpu:bool = True, debug: bool = False):
+                 use_gpu= True, debug = False):
         '''
      
 

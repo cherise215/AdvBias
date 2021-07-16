@@ -41,7 +41,7 @@ class AdvBias(AdvTransformBase):
                  'init_mode':'random',
                  'space':'log'},
                  power_iteration=False,
-                 use_gpu:bool = True, debug: bool = False):
+                 use_gpu = True, debug = False):
         super(AdvBias, self).__init__(config_dict=config_dict,use_gpu=use_gpu,debug=debug)
         self.param=None
         self.power_iteration=power_iteration

@@ -35,11 +35,9 @@ class AdvBias3D(AdvBias):
                  'init_mode':'random',
                  'space':'log'}, 
                  power_iteration=False,
-                 use_gpu:bool = True, debug: bool = False):
+                 use_gpu = True, debug = False):
         super(AdvBias, self).__init__(config_dict=config_dict,use_gpu=use_gpu,debug=debug)
         self.power_iteration=power_iteration
-  
-
 
     def compute_smoothed_bias(self, cpoint=None,interpolation_kernel=None, padding=None,stride=None):
         '''

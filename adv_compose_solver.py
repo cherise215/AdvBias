@@ -9,8 +9,8 @@ class ComposeAdversarialTransformSolver(object):
     apply a chain of transformation
     """
     def __init__(self, chain_of_transforms=[],divergence_types=['kl','contour'],
-                divergence_weights=[1.0,0.5],use_gpu: bool = True,
-                debug: bool = False,
+                divergence_weights=[1.0,0.5],use_gpu = True,
+                debug = False,
                 disable_adv_noise = False,
                 if_norm_image=False,
                 is_gt=False,
