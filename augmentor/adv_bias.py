@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
-from augmentor.adv_transformation_base import AdvTransformBase 
+from augmentor.adv_transformation_base import AdvTransformBase
 
 
 def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32, device='gpu'):
@@ -22,26 +22,33 @@ def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32
     padding = np.array(sigma)
 
     for i in range(1, order + 1):
-        kernel = F.conv2d(kernel, kernel_ones, padding=(i * padding).tolist()) / ((sigma[0] * sigma[1]))
+        kernel = F.conv2d(kernel, kernel_ones, padding=(
+            i * padding).tolist()) / ((sigma[0] * sigma[1]))
 
     if asTensor:
         return kernel[0, 0, ...].to(dtype=dtype, device=device)
     else:
         return kernel[0, 0, ...].numpy()
 
+
 class AdvBias(AdvTransformBase):
     "Adv Bias"
-    def __init__(self, 
+
+    def __init__(self,
                  config_dict={
-                'epsilon':0.3, # magnitude, (0,1)
-                 'control_point_spacing':[32,32], ## spacings between two control points along the x- and y- direction.
-                 'downscale':2, ## downscale images to speed up the computation.
-                 'data_size':[2,1,128,128], ## [ns,ch,h,w], change it to your tensor size
-                 'interpolation_order':3, ## b-spline interpolation order
-                 'init_mode':'random', ## uniform sampling or sample from a gaussian distribution
-                 'space':'log'}, ## generate it in the log space rather than image space, bias =exp(bspline(cpoints)) other wise bias =1+ bspline(cpoints)
-                 power_iteration=False, ## perform power iteration to find the saddle points like virtual adversarial training
-                 use_gpu = True, debug = False):
+                     'epsilon': 0.3,  # magnitude, (0,1)
+                     # spacings between two control points along the x- and y- direction.
+                     'control_point_spacing': [32, 32],
+                     # downscale images to speed up the computation.
+                     'downscale': 2,
+                     # [ns,ch,h,w], change it to your tensor size
+                     'data_size': [2, 1, 128, 128],
+                     'interpolation_order': 3,  # b-spline interpolation order
+                     'init_mode': 'random',  # uniform sampling or sample from a gaussian distribution
+                     'space': 'log'},  # generate it in the log space rather than image space, bias =exp(bspline(cpoints)) other wise bias =1+ bspline(cpoints)
+                 # perform power iteration to find the saddle points like virtual adversarial training
+                 power_iteration=False,
+                 use_gpu=True, debug=False):
         """[adv bias field augmentation]
 
         Args:
@@ -50,24 +57,24 @@ class AdvBias(AdvTransformBase):
             use_gpu (bool, optional): [description]. Defaults to True.
             debug (bool, optional): [description]. Defaults to False.
         """
-        super(AdvBias, self).__init__(config_dict=config_dict,use_gpu=use_gpu,debug=debug)
-        self.param=None
-        self.power_iteration=power_iteration
+        super(AdvBias, self).__init__(
+            config_dict=config_dict, use_gpu=use_gpu, debug=debug)
+        self.param = None
+        self.power_iteration = power_iteration
 
-    def init_config(self,config_dict):
+    def init_config(self, config_dict):
         '''
         initialize a set of transformation configuration parameters
         '''
-        self.epsilon = config_dict['epsilon'] 
-        self.xi = 1e-6
+        self.epsilon = config_dict['epsilon']
+        self.xi = 0.1
         self.data_size = config_dict['data_size']
         self.control_point_spacing = config_dict['control_point_spacing']
         self.downscale = config_dict['downscale']
         self.interpolation_order = config_dict['interpolation_order']
-       
-        self.space=config_dict['space']
-        self.init_mode=config_dict['init_mode']
-        
+
+        self.space = config_dict['space']
+        self.init_mode = config_dict['init_mode']
 
     def init_parameters(self):
         '''
@@ -78,42 +85,43 @@ class AdvBias(AdvTransformBase):
         self._device = 'cuda' if self.use_gpu else 'cpu'
 
         self._dim = len(self.control_point_spacing)
-        self.spacing =  self.control_point_spacing
-        self._dtype= torch.float32
-        self.batch_size=self.data_size[0]
+        self.spacing = self.control_point_spacing
+        self._dtype = torch.float32
+        self.batch_size = self.data_size[0]
         self._image_size = np.array(self.data_size[2:])
-        self.magnitude=self.epsilon
+        self.magnitude = self.epsilon
         self.order = self.interpolation_order
-        self.downscale=self.downscale ## reduce image size to save memory
-       
-        self.use_log = True #if self.space == 'log' else False
+        self.downscale = self.downscale  # reduce image size to save memory
 
-        ## contruct and initialize control points grid with random values
-        self.param,self.interp_kernel,self.bias_field = self.init_bias_field()
+        self.use_log = True  # if self.space == 'log' else False
+
+        # contruct and initialize control points grid with random values
+        self.param, self.interp_kernel, self.bias_field = self.init_bias_field()
         return self.param
 
     def train(self):
         self.is_training = True
-        if self.power_iteration: 
+        if self.power_iteration:
             self.param = self.unit_normalize(self.param.data)
         self.param = torch.nn.Parameter(self.param.data, requires_grad=True)
 
-    def rescale_parameters(self):
-        ## restrict control points values in the 1-ball space
-        self.param=self.unit_normalize(self.param, p_type ='l2')
-    def optimize_parameters(self,step_size=0.3):
+    def optimize_parameters(self, step_size=0.3):
         if self.power_iteration:
-            grad = self.unit_normalize(self.param.grad,p_type ='l2')
+            grad = self.unit_normalize(self.param.grad, p_type='l2')
             self.param = grad.clone().detach()
         else:
-            grad = self.unit_normalize(self.param.grad,p_type ='l2')
-            ## Gradient ascent
-            self.param = self.param +step_size*grad.detach()
+            grad = self.unit_normalize(self.param.grad, p_type='l2')
+            # Gradient ascent
+            self.param = self.param + step_size*grad.detach()
             self.param = self.param.clone().detach()
-        return self.param 
-         
-    def set_parameters(self,param):
-        self.param=param.detach()
+        return self.param
+
+    def set_parameters(self, param):
+        self.param = param.detach()
+
+    def rescale_parameters(self):
+        # restrict control points values in the 1-ball space
+        self.param = self.unit_normalize(self.param, p_type='l2')
 
     def forward(self, data):
         '''
@@ -123,35 +131,34 @@ class AdvBias(AdvTransformBase):
         tensor: transformed images
         '''
         assert self.param is not None, 'init param before transform data'
-        if self.power_iteration:
-            bias_field = self.compute_smoothed_bias(self.xi*self.param) 
+        if self.power_iteration and self.is_training:
+            bias_field = self.compute_smoothed_bias(self.xi*self.param)
         else:
-            bias_field =  self.compute_smoothed_bias(self.param) 
+            bias_field = self.compute_smoothed_bias(self.param)
 
-        self.bias_field =bias_field
-        self.diff=bias_field
+        self.bias_field = bias_field
+        self.diff = bias_field
 
-        ## in case the input image is a multi-channel input.
-        if bias_field.size(1)<data.size(1):
+        # in case the input image is a multi-channel input.
+        if bias_field.size(1) < data.size(1):
             bias_field = bias_field.expand(data.size())
 
         transformed_input = bias_field*data
         if self.debug:
-            print ('bias transformed',transformed_input.size())
+            print('bias transformed', transformed_input.size())
+            print('max magnitude', torch.max(torch.abs(self.bias_field-1)))
         return transformed_input
 
-    def backward(self,data):
-        if self.debug:
-            print ('max magnitude',torch.max(torch.abs(self.bias_field-1)))
-        return data 
-
-    def predict_forward(self,data):
+    def backward(self, data):
         return data
 
-    def predict_backward(self,data):
+    def predict_forward(self, data):
         return data
-        
-    def init_bias_field(self,init_mode=None):
+
+    def predict_backward(self, data):
+        return data
+
+    def init_bias_field(self, init_mode=None):
         '''
         init cp points, interpolation kernel, and  corresponding bias field.
         :param batch_size:
@@ -163,37 +170,44 @@ class AdvBias(AdvTransformBase):
 https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa2241d/airlab/transformation/pairwise.py
         '''
         if init_mode is None:
-            mode=self.init_mode
+            mode = self.init_mode
 
-        ## set up cpoints grid
+        # set up cpoints grid
         self._stride = np.array(self.spacing)
-        cp_grid = np.ceil(np.divide(self._image_size/(1.0*self.downscale), self._stride)).astype(dtype=int)
+        cp_grid = np.ceil(np.divide(
+            self._image_size/(1.0*self.downscale), self._stride)).astype(dtype=int)
         # new image size after convolution
-        inner_image_size = np.multiply(self._stride, cp_grid) - (self._stride - 1)
+        inner_image_size = np.multiply(
+            self._stride, cp_grid) - (self._stride - 1)
         # add one control point outside each side, e.g.2 by 2 grid, requires 4 by 4 control points
         cp_grid = cp_grid + 2
         # image size with additional control points
-        new_image_size = np.multiply(self._stride, cp_grid) - (self._stride - 1)
+        new_image_size = np.multiply(
+            self._stride, cp_grid) - (self._stride - 1)
         # center image between control points
-        image_size_diff = inner_image_size - self._image_size/(1.0*self.downscale)
-        image_size_diff_floor = np.floor((np.abs(image_size_diff)/2))*np.sign(image_size_diff)
-        self._crop_start = image_size_diff_floor + np.remainder(image_size_diff, 2)*np.sign(image_size_diff)
+        image_size_diff = inner_image_size - \
+            self._image_size/(1.0*self.downscale)
+        image_size_diff_floor = np.floor(
+            (np.abs(image_size_diff)/2))*np.sign(image_size_diff)
+        self._crop_start = image_size_diff_floor + \
+            np.remainder(image_size_diff, 2)*np.sign(image_size_diff)
         self._crop_end = image_size_diff_floor
         self.cp_grid = [self.batch_size, 1] + cp_grid.tolist()
-        
-         # initialize control points parameters for optimization
+
+        # initialize control points parameters for optimization
         if mode == 'gaussian':
-            self.param = torch.ones(*self.cp_grid).normal_(mean=0,std=0.5) ##
-        elif mode =='random':
-            self.param=(torch.rand(*self.cp_grid)*2-1)*self.epsilon ## -eps,eps
-            
+            self.param = torch.ones(*self.cp_grid).normal_(mean=0, std=0.5)
+        elif mode == 'random':
+            self.param = (torch.rand(*self.cp_grid)*2-1) * \
+                self.epsilon  # -eps,eps
+
         elif mode == 'identity':
-            ## static initialization, bias free
+            # static initialization, bias free
             self.param = torch.zeros(*self.cp_grid)
         else:
-            raise  NotImplementedError
-        
-        self.param = self.unit_normalize(self.param, p_type ='l2')
+            raise NotImplementedError
+
+        self.param = self.unit_normalize(self.param, p_type='l2')
         self.param = self.param.to(dtype=self._dtype, device=self._device)
 
         # convert to integer
@@ -202,56 +216,55 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
         self._crop_end = self._crop_end.astype(dtype=int)
 
         size = [self.batch_size, 1] + new_image_size.astype(dtype=int).tolist()
-        ## initialize interpolation kernel
-        self.interp_kernel=self.get_bspline_kernel(order=self.order, spacing=self.spacing)
-        self.interp_kernel=self.interp_kernel.to(self.param.device)
-        self.bias_field = self.compute_smoothed_bias(self.param,padding=self._padding,stride=self._stride)
+        # initialize interpolation kernel
+        self.interp_kernel = self.get_bspline_kernel(
+            order=self.order, spacing=self.spacing)
+        self.interp_kernel = self.interp_kernel.to(self.param.device)
+        self.bias_field = self.compute_smoothed_bias(
+            self.param, padding=self._padding, stride=self._stride)
         if self.debug:
             print('initialize {} control points'.format(str(self.param.size())))
-      
-        return self.param,self.interp_kernel,self.bias_field
 
+        return self.param, self.interp_kernel, self.bias_field
 
-    def compute_smoothed_bias(self, cpoint=None,interpolation_kernel=None, padding=None,stride=None):
+    def compute_smoothed_bias(self, cpoint=None, interpolation_kernel=None, padding=None, stride=None):
         '''
         generate bias field given the cppints N*1*k*l
         :return: bias field bs*1*H*W
         '''
         if interpolation_kernel is None:
-            interpolation_kernel=self.interp_kernel
+            interpolation_kernel = self.interp_kernel
         if padding is None:
-            padding =self._padding
+            padding = self._padding
         if stride is None:
-            stride =self._stride
+            stride = self._stride
         if cpoint is None:
-            cpoint=self.param
+            cpoint = self.param
         bias_field = F.conv_transpose2d(cpoint, interpolation_kernel,
-                                          padding=padding, stride=stride, groups=1)
+                                        padding=padding, stride=stride, groups=1)
         # crop bias
-        bias_field_tmp=bias_field[:, :,
-                       stride[0] + self._crop_start[0]:-stride[0] - self._crop_end[0],
-                       stride[1] + self._crop_start[1]:-stride[1] - self._crop_end[1]]
+        bias_field_tmp = bias_field[:, :,
+                                    stride[0] + self._crop_start[0]:-stride[0] - self._crop_end[0],
+                                    stride[1] + self._crop_start[1]:-stride[1] - self._crop_end[1]]
 
-        ## recover bias field to original image resolution for efficiency.
-        if self.debug: print ('after intep, size:',bias_field_tmp.size())
+        # recover bias field to original image resolution for efficiency.
+        if self.debug:
+            print('after intep, size:', bias_field_tmp.size())
         scale_factor_h = self._image_size[0] / bias_field_tmp.size(2)
         scale_factor_w = self._image_size[1] / bias_field_tmp.size(3)
 
-        if scale_factor_h>1 or scale_factor_w>1:
-            upsampler = torch.nn.Upsample(scale_factor=(scale_factor_h,scale_factor_w), mode='bilinear',
-                                            align_corners=False)
+        if scale_factor_h > 1 or scale_factor_w > 1:
+            upsampler = torch.nn.Upsample(scale_factor=(scale_factor_h, scale_factor_w), mode='bilinear',
+                                          align_corners=False)
             diff_bias = upsampler(bias_field_tmp)
         else:
-            diff_bias=bias_field_tmp
-    
+            diff_bias = bias_field_tmp
+
         bias_field = torch.exp(diff_bias)
-        bias_field = self.clip_bias(bias_field,self.epsilon)
+        bias_field = self.clip_bias(bias_field, self.epsilon)
         return bias_field
 
-
-
-
-    def clip_bias(self,bias_field,magnitude=None):
+    def clip_bias(self, bias_field, magnitude=None):
         """[summary]
         clip the bias field so that it values fall in [1-magnitude, 1+magnitude]
         Args:
@@ -262,31 +275,33 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
             [type]: [description]
         """
         if magnitude is None:
-            magnitude=self.magnitude
-        assert magnitude>0
+            magnitude = self.magnitude
+        assert magnitude > 0
 
         # bias_field =1+magnitude*self.unit_normalize(bias_field-1, p_type ='Infinity')
         bias = bias_field-1
-        bias_field = 1+torch.clamp(bias,-magnitude,magnitude)
+        bias_field = 1+torch.clamp(bias, -magnitude, magnitude)
         if self.debug:
             print('max |bias-id|', torch.max(torch.abs(bias_field-1)))
         return bias_field
 
-
-    def get_bspline_kernel(self,spacing, order=3):
+    def get_bspline_kernel(self, spacing, order=3):
         '''
 
         :param order init: bspline order, default to 3
         :param spacing tuple of int: spacing between control points along h and w.
         :return:  kernel matrix
         '''
-        self._kernel = bspline_kernel_2d(spacing, order=order, asTensor=True, dtype=self._dtype, device=self._device)
+        self._kernel = bspline_kernel_2d(
+            spacing, order=order, asTensor=True, dtype=self._dtype, device=self._device)
         self._padding = (np.array(self._kernel.size()) - 1) / 2
         self._padding = self._padding.astype(dtype=int).tolist()
         self._kernel.unsqueeze_(0).unsqueeze_(0)
         self._kernel = self._kernel.to(dtype=self._dtype, device=self._device)
         return self._kernel
+
     def get_name(self):
         return 'bias'
+
     def is_geometric(self):
-        return 0 
+        return 0
