@@ -1,0 +1,7 @@
+__pycache__
+.idea
+saved
+.vscode
+log/
+dist/
+result/
