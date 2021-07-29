@@ -1,8 +1,10 @@
-import torch
-import torch.nn.functional as F
+from advbias.augmentor.adv_transformation_base import AdvTransformBase
 import numpy as np
-
-from augmentor.adv_transformation_base import AdvTransformBase
+import torch.nn.functional as F
+import torch
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def bspline_kernel_2d(sigma=[1, 1], order=3, asTensor=False, dtype=torch.float32, device='gpu'):
@@ -37,8 +39,8 @@ class AdvBias(AdvTransformBase):
     def __init__(self,
                  config_dict={
                      'epsilon': 0.3,  # magnitude, (0,1)
-                     # spacings between two control points along the x- and y- direction.
-                     'control_point_spacing': [32, 32],
+                     # spacings between two control points along the y- and x- direction.
+                     'control_point_spacing': [64, 64],
                      # downscale images to speed up the computation.
                      'downscale': 2,
                      # [ns,ch,h,w], change it to your tensor size
@@ -69,8 +71,16 @@ class AdvBias(AdvTransformBase):
         self.epsilon = config_dict['epsilon']
         self.xi = 0.1
         self.data_size = config_dict['data_size']
-        self.control_point_spacing = config_dict['control_point_spacing']
         self.downscale = config_dict['downscale']
+        assert self.downscale <= min(
+            self.data_size[2:]), 'downscale factor is too  large'
+        self.control_point_spacing = [
+            i//self.downscale for i in config_dict['control_point_spacing']]
+        if (sum(self.control_point_spacing) > sum([40]*len(self.control_point_spacing))):
+            logging.warning(
+                'control point spacing may be too large, please increase the downscale factor.')
+        if self.debug:
+            print('downscale factor:', self.downscale)
         self.interpolation_order = config_dict['interpolation_order']
 
         self.space = config_dict['space']
@@ -147,6 +157,10 @@ class AdvBias(AdvTransformBase):
         if self.debug:
             print('bias transformed', transformed_input.size())
             print('max magnitude', torch.max(torch.abs(self.bias_field-1)))
+        try:
+            torch.cuda.empty_cache()
+        except:
+            pass
         return transformed_input
 
     def backward(self, data):
@@ -209,21 +223,20 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
         self.param = self.unit_normalize(self.param, p_type='l2')
         self.param = self.param.to(dtype=self._dtype, device=self._device)
+        if self.debug:
+            print('initialize {} control points'.format(str(self.param.size())))
 
         # convert to integer
         self._stride = self._stride.astype(dtype=int).tolist()
         self._crop_start = self._crop_start.astype(dtype=int)
         self._crop_end = self._crop_end.astype(dtype=int)
 
-        size = [self.batch_size, 1] + new_image_size.astype(dtype=int).tolist()
         # initialize interpolation kernel
         self.interp_kernel = self.get_bspline_kernel(
             order=self.order, spacing=self.spacing)
         self.interp_kernel = self.interp_kernel.to(self.param.device)
         self.bias_field = self.compute_smoothed_bias(
             self.param, padding=self._padding, stride=self._stride)
-        if self.debug:
-            print('initialize {} control points'.format(str(self.param.size())))
 
         return self.param, self.interp_kernel, self.bias_field
 
@@ -249,7 +262,7 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
         # recover bias field to original image resolution for efficiency.
         if self.debug:
-            print('after intep, size:', bias_field_tmp.size())
+            print('after bspline intep, size:', bias_field_tmp.size())
         scale_factor_h = self._image_size[0] / bias_field_tmp.size(2)
         scale_factor_w = self._image_size[1] / bias_field_tmp.size(3)
 
@@ -257,6 +270,9 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
             upsampler = torch.nn.Upsample(scale_factor=(scale_factor_h, scale_factor_w), mode='bilinear',
                                           align_corners=False)
             diff_bias = upsampler(bias_field_tmp)
+            print('recover image resolution, size of bias field:',
+                  bias_field_tmp.size())
+
         else:
             diff_bias = bias_field_tmp
 
@@ -305,3 +321,45 @@ https://github.com/airlab-unibas/airlab/blob/1a715766e17c812803624d95196092291fa
 
     def is_geometric(self):
         return 0
+
+
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    from os.path import join as join
+
+    from advbias.common.utils import check_dir
+    dir_path = './result/log'
+    check_dir(dir_path, create=True)
+    images = torch.ones(2, 1, 128, 128).cuda()
+    images[:, :, ::2, ::2] = 2.0
+    images[:, :, ::3, ::3] = 3.0
+    images[:, :, ::1, ::1] = 1.0
+    images = images.float()
+    images.requires_grad = False
+    print('input:', images)
+    augmentor = AdvBias(
+        config_dict={'epsilon': 0.3,
+                     'control_point_spacing': [32, 32],
+                     'downscale': 2,
+                     'data_size': [2, 1, 128, 128],
+                     'interpolation_order': 3,
+                     'init_mode': 'gaussian',
+                     'space': 'log'},
+        power_iteration=False,
+        debug=True, use_gpu=True)
+
+    # perform random bias field
+    augmentor.init_parameters()
+    transformed = augmentor.forward(images)
+    error = transformed-images
+    print('sum error', torch.sum(error))
+
+    plt.subplot(131)
+    plt.imshow(images.detach().cpu().numpy()[0, 0])
+
+    plt.subplot(132)
+    plt.imshow(transformed.detach().cpu().numpy()[0, 0])
+
+    plt.subplot(133)
+    plt.imshow((transformed/images).detach().cpu().numpy()[0, 0])
+    plt.savefig(join(dir_path, 'test_bias.png'))

@@ -4,9 +4,10 @@ import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
 
-def calc_segmentation_consistency(output, reference,divergence_types=['kl','contour'],
-                                    divergence_weights=[1.0,0.5],class_weights=None,scales=[0],
-                                    mask=None, is_gt=False):
+
+def calc_segmentation_consistency(output, reference, divergence_types=['kl', 'contour'],
+                                  divergence_weights=[1.0, 0.5], class_weights=None, scales=[0],
+                                  mask=None, is_gt=False):
     """
     measuring the difference between two predictions (network logits before softmax)
     Args:
@@ -24,10 +25,10 @@ def calc_segmentation_consistency(output, reference,divergence_types=['kl','cont
     dist = 0.
     num_classes = reference.size(1)
     if mask is None:
-        ## apply masks so that only gradients on non-zero regions  will be backpropagated. 
+        # apply masks so that only gradients on non-zero regions  will be backpropagated.
         mask = torch.ones_like(output).float().to(reference.device)
     for scale in scales:
-        if scale>0:
+        if scale > 0:
             output_reference = torch.nn.AvgPool2d(2 ** scale)(reference)
             output_new = torch.nn.AvgPool2d(2 ** scale)(output)
         else:
@@ -35,51 +36,59 @@ def calc_segmentation_consistency(output, reference,divergence_types=['kl','cont
             output_new = output
         for divergence_type, d_weight in zip(divergence_types, divergence_weights):
             loss = 0.
-            if divergence_type=='kl':
+            if divergence_type == 'kl':
                 '''
                 standard kl loss 
                 '''
-                loss = kl_divergence(pred=output_new,reference=output_reference,mask=mask, is_gt=is_gt)
-            elif divergence_type =='mse':
-                n,h,w = output_new.size(0),output_new.size(2),output_new.size(3)
-                if not is_gt: 
+                loss = kl_divergence(
+                    pred=output_new, reference=output_reference, mask=mask, is_gt=is_gt)
+            elif divergence_type == 'mse':
+                n, h, w = output_new.size(
+                    0), output_new.size(2), output_new.size(3)
+                if not is_gt:
                     target_pred = torch.softmax(output_reference, dim=1)
                 else:
                     target_pred = output_reference
                 input_pred = torch.softmax(output_new, dim=1)
-                loss = torch.nn.MSELoss(reduction='sum')(target = target_pred*mask, input = input_pred*mask)
+                loss = torch.nn.MSELoss(reduction='sum')(
+                    target=target_pred*mask, input=input_pred*mask)
                 loss = loss/(n*h*w)
-            elif divergence_type == 'contour':  ## contour-based loss
-                if not is_gt: 
+            elif divergence_type == 'contour':  # contour-based loss
+                if not is_gt:
                     target_pred = torch.softmax(output_reference, dim=1)
                 else:
                     target_pred = output_reference
                 input_pred = torch.softmax(output_new, dim=1)
                 cnt = 0
-                for i in range(1,num_classes):
-                    cnt +=1
-                    loss += contour_loss(input=input_pred[:,[i],], target=(target_pred[:,[i]]), ignore_background=False,mask=mask,
-                                                                    one_hot_target=False)
-                if cnt>0:loss/=cnt
-                                        
+                for i in range(1, num_classes):
+                    cnt += 1
+                    loss += contour_loss(input=input_pred[:, [i], ], target=(target_pred[:, [i]]), ignore_background=False, mask=mask,
+                                         one_hot_target=False)
+                if cnt > 0:
+                    loss /= cnt
+
             else:
                 raise NotImplementedError
-          
-            print ('{}:{}'.format(divergence_type,loss.item()))
+
+            print('{}:{}'.format(divergence_type, loss.item()))
 
             dist += 2 ** scale*(d_weight * loss)
-    return dist / (1.0  * len(scales))
-
+    return dist / (1.0 * len(scales))
 
 
 def calc_segmentation_mse_consistency(input, target):
-    loss = calc_segmentation_consistency(output=input,reference=target,divergence_types=['mse'],divergence_weights=[1.0],class_weights=None,mask=None)
-    return loss
-def calc_segmentation_kl_consistency(input, target):
-    loss = calc_segmentation_consistency(output=input,reference=target,divergence_types=['kl'],divergence_weights=[1.0],class_weights=None,mask=None)
+    loss = calc_segmentation_consistency(output=input, reference=target, divergence_types=[
+                                         'mse'], divergence_weights=[1.0], class_weights=None, mask=None)
     return loss
 
-def contour_loss(input, target,  use_gpu=True,ignore_background=True,one_hot_target=True,mask=None):
+
+def calc_segmentation_kl_consistency(input, target):
+    loss = calc_segmentation_consistency(output=input, reference=target, divergence_types=[
+                                         'kl'], divergence_weights=[1.0], class_weights=None, mask=None)
+    return loss
+
+
+def contour_loss(input, target,  use_gpu=True, ignore_background=True, one_hot_target=True, mask=None):
     '''
     calc the contour loss across object boundaries (WITHOUT background class)
     :param input: NDArray. N*num_classes*H*W : pixelwise probs. for each class e.g. the softmax output from a neural network
@@ -89,31 +98,33 @@ def contour_loss(input, target,  use_gpu=True,ignore_background=True,one_hot_tar
     :param one_hot_target: boolean. if true, will first convert the target from NHW to NCHW. Default: True.
     :return:
     '''
-    n,num_classes,h,w = input.size(0),input.size(1),input.size(2),input.size(3)
+    n, num_classes, h, w = input.size(0), input.size(
+        1), input.size(2), input.size(3)
     if one_hot_target:
         onehot_mapper = One_Hot(depth=num_classes, use_gpu=use_gpu)
         target = target.long()
-        onehot_target = onehot_mapper(target).contiguous().view(input.size(0), num_classes, input.size(2), input.size(3))
+        onehot_target = onehot_mapper(target).contiguous().view(
+            input.size(0), num_classes, input.size(2), input.size(3))
     else:
-        onehot_target=target
-    assert onehot_target.size() == input.size(), 'pred size: {} must match target size: {}'.format(str(input.size()),str(onehot_target.size()))
+        onehot_target = target
+    assert onehot_target.size() == input.size(), 'pred size: {} must match target size: {}'.format(
+        str(input.size()), str(onehot_target.size()))
 
     if mask is None:
-        ## apply masks so that only gradients on certain regions will be backpropagated. 
+        # apply masks so that only gradients on certain regions will be backpropagated.
         mask = torch.ones_like(input).long().to(input.device)
         mask.requires_grad = False
     else:
         pass
         # print ('mask applied')
-    
-    
+
     if ignore_background:
         object_classes = num_classes - 1
         target_object_maps = onehot_target[:, 1:].float()
         input = input[:, 1:]
     else:
-        target_object_maps=onehot_target
-        object_classes  = num_classes
+        target_object_maps = onehot_target
+        object_classes = num_classes
 
     x_filter = np.array([[1, 0, -1],
                          [2, 0, -2],
@@ -132,7 +143,7 @@ def contour_loss(input, target,  use_gpu=True,ignore_background=True,one_hot_tar
     y_filter = np.repeat(y_filter, axis=1, repeats=object_classes)
     y_filter = np.repeat(y_filter, axis=0, repeats=object_classes)
     conv_y = nn.Conv2d(in_channels=object_classes, out_channels=object_classes, kernel_size=3, stride=1, padding=1,
-                      bias=False)
+                       bias=False)
     conv_y.weight = nn.Parameter(torch.from_numpy(y_filter).float())
 
     if use_gpu:
@@ -143,16 +154,17 @@ def contour_loss(input, target,  use_gpu=True,ignore_background=True,one_hot_tar
     for param in conv_x.parameters():
         param.requires_grad = False
 
-    g_x_pred = conv_x(input)*mask[:,:object_classes]
-    g_y_pred = conv_y(input)*mask[:,:object_classes]
-    g_y_truth = conv_y(target_object_maps)*mask[:,:object_classes]
-    g_x_truth = conv_x(target_object_maps)*mask[:,:object_classes]
-    ## mse loss
-    loss =0.5*(torch.nn.MSELoss(reduction='mean')(input=g_x_pred,target=g_x_truth) +torch.nn.MSELoss(reduction='mean')(input=g_y_pred,target=g_y_truth))
+    g_x_pred = conv_x(input)*mask[:, :object_classes]
+    g_y_pred = conv_y(input)*mask[:, :object_classes]
+    g_y_truth = conv_y(target_object_maps)*mask[:, :object_classes]
+    g_x_truth = conv_x(target_object_maps)*mask[:, :object_classes]
+    # mse loss
+    loss = 0.5*(torch.nn.MSELoss(reduction='mean')(input=g_x_pred, target=g_x_truth) +
+                torch.nn.MSELoss(reduction='mean')(input=g_y_pred, target=g_y_truth))
     return loss
 
 
-def kl_divergence(reference, pred,mask=None, is_gt=False):
+def kl_divergence(reference, pred, mask=None, is_gt=False):
     '''
     calc the kl div distance between two outputs p and q from a network/model: p(y1|x1).p(y2|x2).
     :param reference p: directly output from network using origin input without softmax
@@ -161,23 +173,24 @@ def kl_divergence(reference, pred,mask=None, is_gt=False):
     :return: kl divergence: DKL(P||Q) = mean(\sum_1 \to C (p^c log (p^c|q^c)))
 
     '''
-    q=pred
+    q = pred
 
     if mask is None:
-        mask = torch.ones_like(q, device =q.device)
-        mask.requires_grad=False
-    if not is_gt: 
-        p= F.softmax(reference, dim=1)
+        mask = torch.ones_like(q, device=q.device)
+        mask.requires_grad = False
+    if not is_gt:
+        p = F.softmax(reference, dim=1)
         log_p = F.log_softmax(reference, dim=1)
     else:
-        p = torch.where(reference==0,1e-8,1-1e-8)
-        log_p = torch.log(p) ## avoid NAN when log(0)
+        p = torch.where(reference == 0, 1e-8, 1-1e-8)
+        log_p = torch.log(p)  # avoid NAN when log(0)
     cls_plogp = mask*(p * log_p)
     cls_plogq = mask*(p * F.log_softmax(q, dim=1))
-    plogp = torch.sum(cls_plogp,dim=1,keepdim=True)
-    plogq = torch.sum(cls_plogq,dim=1,keepdim=True)
+    plogp = torch.sum(cls_plogp, dim=1, keepdim=True)
+    plogq = torch.sum(cls_plogq, dim=1, keepdim=True)
     kl_loss = torch.mean(plogp - plogq)
     return kl_loss
+
 
 class One_Hot(nn.Module):
     def __init__(self, depth, use_gpu=True):
@@ -200,8 +213,6 @@ class One_Hot(nn.Module):
         return self.__class__.__name__ + "({})".format(self.depth)
 
 
-
-
 def cross_entropy_2D(input, target, weight=None, size_average=True):
     """[summary]
     calc cross entropy loss computed on 2D images 
@@ -219,37 +230,40 @@ def cross_entropy_2D(input, target, weight=None, size_average=True):
     n, c, h, w = input.size()
     log_p = F.log_softmax(input, dim=1)
     log_p = log_p.transpose(1, 2).transpose(2, 3).contiguous().view(-1, c)
-   
-    if len(target.size())==3:
+
+    if len(target.size()) == 3:
         target = target.view(target.numel())
         if not weight is None:
-             ## sum(weight) =C,  for numerical stability.
+            # sum(weight) =C,  for numerical stability.
             weight = weight/weight.sum()*c
-        loss_vector = F.nll_loss(log_p, target, weight=weight, reduction="none")
+        loss_vector = F.nll_loss(
+            log_p, target, weight=weight, reduction="none")
         loss = torch.sum(loss_vector)
         if size_average:
             loss /= (n*h*w)
-    elif len(target.size())==4:
-        ## ce loss=-qlog(p) 
-        reference= target
-        reference = reference.transpose(1, 2).transpose(2, 3).contiguous().view(-1, c) #M,C
+    elif len(target.size()) == 4:
+        # ce loss=-qlog(p)
+        reference = target
+        reference = reference.transpose(1, 2).transpose(
+            2, 3).contiguous().view(-1, c)  # M,C
         if weight is None:
-            plogq = torch.sum(reference *log_p, dim=1)
+            plogq = torch.sum(reference * log_p, dim=1)
             plogq = torch.sum(plogq)
             if size_average:
-                plogq/= (n*h*w)
+                plogq /= (n*h*w)
         else:
-            weight=np.array(weight)
-            ## sum(weight) =C
-            weight  = weight/weight.sum()*c
-            plogq_class_wise =reference *log_p
-            plogq_sum_class=0.
+            weight = np.array(weight)
+            # sum(weight) =C
+            weight = weight/weight.sum()*c
+            plogq_class_wise = reference * log_p
+            plogq_sum_class = 0.
             for i in range(c):
-                plogq_sum_class+=torch.sum(plogq_class_wise[:,i]*weight[i])
+                plogq_sum_class += torch.sum(plogq_class_wise[:, i]*weight[i])
             plogq = plogq_sum_class
             if size_average:
-                plogq/= (n*h*w)  # only average loss on the mask entries with value =1
-        loss=-1*plogq
+                # only average loss on the mask entries with value =1
+                plogq /= (n*h*w)
+        loss = -1*plogq
     else:
         raise NotImplementedError
     return loss

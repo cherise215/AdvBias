@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
-from augmentor.adv_bias import AdvBias
+from advbias.augmentor.adv_bias import AdvBias
 
 
 """
@@ -33,8 +33,8 @@ class AdvBias3D(AdvBias):
     def __init__(self,
                  config_dict={
                      'epsilon': 0.3,  # bias field magnitude
-                     # spacings between two points along x and y direction.
-                     'control_point_spacing': [32, 32, 32],
+                     # spacings between two points along z, y and x direction.
+                     'control_point_spacing': [64, 64, 64],
                      # we downsample images to reduce computational costs, especially with large spacing along images. To get true spacings, one should multiply control point spacing with downscale.
                      'downscale': 2,
                      'data_size': [2, 1, 128, 128, 128],
@@ -71,7 +71,7 @@ class AdvBias3D(AdvBias):
 
         # recover bias field to original image resolution for efficiency.
         if self.debug:
-            print('after intep, size:', bias_field_tmp.size())
+            print('after bspline intep, size:', bias_field_tmp.size())
         scale_factor_d = self._image_size[0] / bias_field_tmp.size(2)
         scale_factor_h = self._image_size[1] / bias_field_tmp.size(3)
         scale_factor_w = self._image_size[2] / bias_field_tmp.size(4)
@@ -80,6 +80,8 @@ class AdvBias3D(AdvBias):
             upsampler = torch.nn.Upsample(scale_factor=(scale_factor_d, scale_factor_h, scale_factor_w), mode='trilinear',
                                           align_corners=False)
             diff_bias = upsampler(bias_field_tmp)
+            print('recover resolution, size of bias field:', diff_bias.size())
+
         else:
             diff_bias = bias_field_tmp
 
@@ -117,11 +119,11 @@ if __name__ == "__main__":
 
     images = images.float()
     images.requires_grad = False
-    print('input:', images)
+    print('input:', images.size())
     augmentor = AdvBias3D(
-        config_dict={'epsilon': 0.9,
-                     'control_point_spacing': [16, 16, 16],
-                     'downscale': 4,  # increase the downscale factor to save interpolation time
+        config_dict={'epsilon': 0.3,
+                     'control_point_spacing': [64, 64, 64],
+                     'downscale': 1,  # increase the downscale factor to save interpolation time
                      'data_size': [2, 1, 128, 128, 128],
                      'interpolation_order': 3,
                      'init_mode': 'gaussian',
@@ -150,4 +152,4 @@ if __name__ == "__main__":
 
     plt.subplot(236)
     plt.imshow(augmentor.bias_field.detach().cpu().numpy()[0, 0, 28])
-    plt.savefig('./result/test_bias_3D.png')
+    plt.savefig('./result/log/test_bias_3D.png')

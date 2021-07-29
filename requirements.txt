@@ -1,6 +1,6 @@
 numpy
 torch
 SimpleITK
-skimage
+scikit-image
 seaborn
 matplotlib
