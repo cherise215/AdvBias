@@ -85,8 +85,10 @@ class AdvBias3D(AdvBias):
         else:
             diff_bias = bias_field_tmp
 
-        bias_field = torch.exp(diff_bias)
-
+        if self.use_log:
+            bias_field = torch.exp(diff_bias)
+        else:
+            bias_field=1+diff_bias
         return bias_field
 
     def get_bspline_kernel(self, spacing, order=3):
@@ -113,9 +115,9 @@ class AdvBias3D(AdvBias):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    images = torch.zeros(2, 1, 128, 128, 128).cuda()
-    images[:, :, 0:80, 60:80, 60:80] = 0.2
-    images[:, :, 0:80, 20:80, 20:80] = 0.8
+    images = 128*torch.randn(2, 1, 128, 128, 128).cuda()
+    images[:, :, 10:120, 10:120, 10:120] =256
+    images =images.clone()
 
     images = images.float()
     images.requires_grad = False
@@ -123,10 +125,10 @@ if __name__ == "__main__":
     augmentor = AdvBias3D(
         config_dict={'epsilon': 0.3,
                      'control_point_spacing': [64, 64, 64],
-                     'downscale': 1,  # increase the downscale factor to save interpolation time
+                     'downscale': 4,  # increase the downscale factor to save interpolation time
                      'data_size': [2, 1, 128, 128, 128],
                      'interpolation_order': 3,
-                     'init_mode': 'gaussian',
+                     'init_mode': 'random',
                      'space': 'log'},
         power_iteration=False,
         debug=True, use_gpu=True)
@@ -139,17 +141,26 @@ if __name__ == "__main__":
 
     plt.subplot(231)
     plt.imshow(images.detach().cpu().numpy()[0, 0, 0])
+    plt.title("Input slice: 0 ")
 
     plt.subplot(232)
     plt.imshow(transformed.detach().cpu().numpy()[0, 0, 0])
+    plt.title("Augmented: 0")
 
     plt.subplot(233)
     plt.imshow((augmentor.bias_field.detach()).detach().cpu().numpy()[0, 0, 0])
+    plt.title("Bias Field: 0")
+
     plt.subplot(234)
     plt.imshow(images.detach().cpu().numpy()[0, 0, 28])
+    plt.title("Input slice: 28")
+
     plt.subplot(235)
     plt.imshow(transformed.detach().cpu().numpy()[0, 0, 28])
+    plt.title("Augmented: 28")
 
     plt.subplot(236)
     plt.imshow(augmentor.bias_field.detach().cpu().numpy()[0, 0, 28])
-    plt.savefig('./result/log/test_bias_3D.png')
+    plt.title("Bias field: 28")
+
+    plt.savefig('./result/test_bias_3D.png')

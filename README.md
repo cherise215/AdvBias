@@ -1,7 +1,7 @@
 # Adversarial Bias Field Data Augmentation (Adv Bias)
 
 This repo contains the pytorch implementation of adversarial bias field augmentation, which supports both 2D and 3D images.
-Please cite our work if you find it useful in your work
+Please cite our work if you find it useful in your work.
 
 ## Introduction
 
@@ -28,6 +28,7 @@ For more details please see our [MICCAI 2020 paper](https://arxiv.org/abs/2006.1
 2.  Play with the provided jupyter notebook to check the enviroments
 
 ## Usage
+
 
 1. Please ref to Sec. 4.1 and Sec 4.2 in the jupyter notebook: "adv_bias_field_generation.ipynb" to see how to plug in our module to support supervised/semi-supervised learning.
 2. You can also clone this probject as submodule in your project.
